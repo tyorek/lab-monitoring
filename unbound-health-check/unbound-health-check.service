@@ -1,0 +1,18 @@
+[Unit]
+Description=Keep Technitium forwarders pointed at healthy Unbound upstreams
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/unbound-health-check.sh
+# systemd creates /var/lib/unbound-health-check and allows writes to it
+# even under ProtectSystem=strict (unlike ReadWritePaths, which requires
+# the path to already exist at namespace setup -> 226/NAMESPACE)
+StateDirectory=unbound-health-check
+Environment=STATE_DIR=/var/lib/unbound-health-check
+# hardening
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes

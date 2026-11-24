@@ -1,0 +1,60 @@
+# unbound-health-check configuration
+# Install to /etc/unbound-health-check/config
+
+# Technitium admin API (local instance).
+# This box force-redirects the console HTTP->HTTPS (307), so the script follows
+# the redirect (curl -L) and CURL_OPTS carries -k for the loopback cert — 127.0.0.1
+# is local, so skipping cert validation on the admin call is safe.
+TECHNITIUM_URL="http://127.0.0.1:5380"
+CURL_OPTS="-k"
+
+# API token file (chmod 600 root:root). Create the token in the Technitium
+# web console: Administration -> Sessions -> Create Token.
+TOKEN_FILE="/etc/unbound-health-check/token"
+
+# Unbound upstream addresses — IPs only (forwarders are IPs, non-negotiable).
+# DMZ auth server (10.20.0.9): forwards to the DMZ-subnet Unbounds over regular
+# DNS (port 53), NOT DoT. Space-separated; each address is health-checked and
+# added/removed independently, so v4 and v6 of the same box fail over separately.
+#   bunode1 = 10.20.0.13 / 2001:db8:4a00:4800:216:3eff:fe05:ae6f
+#   bunode2 = 10.20.0.14 / 2001:db8:4a00:4800:216:3eff:fe44:809c
+# Also health-managed: the public GCP recursive resolvers ns1/ns2, pinned by IP,
+# now dual-stack (DMZ v6 egress fixed — bunodes get the RA default route via
+# accept_ra=1). v6 written in RFC 5952 canonical compressed form so it round-trips
+# through Technitium's read-back without a compare thrash.
+#   ns1 = 34.174.100.7 / 2600:1901:8140:8c0::
+#   ns2 = 8.230.105.255 / 2600:1901:8140:8c0:0:1::
+# NOTE: the local v6 GUAs live in the delegated vlan10 prefix (…:4800) — if the ISP
+# re-delegates, update them here; until then the script just drops dead v6 on its own.
+UPSTREAMS="10.20.0.13 10.20.0.14 2001:db8:4a00:4800:216:3eff:fe05:ae6f 2001:db8:4a00:4800:216:3eff:fe44:809c 34.174.100.7 8.230.105.255 2600:1901:8140:8c0:: 2600:1901:8140:8c0:0:1::"
+
+# Metered upstreams — the GCP cloud resolvers cost egress $ per query. Probed at most
+# once per SLOW_PROBE_INTERVAL (seconds) instead of every 30s cycle; between probes the
+# cached state is reused and NO query goes out. Local unbounds keep the fast cadence.
+SLOW_PROBE_INTERVAL=600
+SLOW_UPSTREAMS="34.174.100.7 8.230.105.255 2600:1901:8140:8c0:: 2600:1901:8140:8c0:0:1::"
+
+# Optional display label per managed IP, written to Technitium as "label (ip)" so
+# the forwarder list stays readable while the IP is pinned (no bootstrap lookup).
+# Local unbounds have no label (bare IP). For regular-DNS (Udp) forwarders the label
+# is cosmetic — if this Technitium strips it on save, the entry falls back to the
+# bare IP, still fully functional and still health-managed.
+declare -A LABEL=(
+  [34.174.100.7]="ns1.example.com"
+  [8.230.105.255]="ns2.example.com"
+  [2600:1901:8140:8c0::]="ns1.example.com"
+  [2600:1901:8140:8c0:0:1::]="ns2.example.com"
+)
+
+# Probe name: must be something the Unbounds will actually answer with data.
+# (Router lesson: first probe choice was blocklisted. Unbound does full
+# recursion, so any stable public name works.)
+PROBE_NAME="example.com"
+
+# Seconds to wait for a probe reply
+PROBE_TIMEOUT=2
+
+# Consecutive probes required to flip state (anti-flap hysteresis).
+# At a 30s timer: down after ~60s of failures, back after ~60s of recovery.
+FAIL_THRESHOLD=2
+OK_THRESHOLD=2

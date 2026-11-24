@@ -1,0 +1,15 @@
+[Unit]
+Description=Keep Technitium forwarders pointed at healthy Unbound upstreams
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/unbound-health-check.sh
+# hardening
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ReadWritePaths=/run/unbound-health-check
+ExecStartPre=/usr/bin/mkdir -p /run/unbound-health-check
